@@ -38,17 +38,33 @@ from typing_extensions import TypedDict
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
+
 from langchain_core.messages import HumanMessage
+from langchain_openai import ChatOpenAI
+from langchain_tavily import TavilySearch
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_huggingface import HuggingFaceEmbeddings
+
 
 # TODO STEP 0 — import the graph building blocks from langgraph.
-# You need: StateGraph, START, END from langgraph.graph
-#           InMemorySaver from langgraph.checkpoint.memory
-# WHERE TO LOOK: "Graph API" docs, first code example on the page.
-# from langgraph.graph import ...
-# from langgraph.checkpoint.memory import ...
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import InMemorySaver
+
 
 load_dotenv()
+llm = ChatOpenAI(
+    model="nvidia/nemotron-3-super-120b-a12b:free",
+    temperature=0,
+    base_url="https://openrouter.ai/api/v1",
+)
+search_tool = TavilySearch(max_results=5)
 
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
+)
+
+vector_store = InMemoryVectorStore(embedding=embeddings)
 
 # ============================================================
 # STEP 1 — THE STATE  (the "digital clipboard" from the slides)
@@ -69,8 +85,15 @@ load_dotenv()
 
 class AgentState(TypedDict):
     topic: str
+    search_query: str
+    collected_data: List[Dict]
+    analyzed_data: List[Dict]
+    quality_score: int
+    iteration_count: int
+    final_report: str
+    execution_logs: Annotated[List[str], operator.add]
     # TODO: add the remaining 6 keys (one uses Annotated + operator.add)
-    pass
+
 
 
 # ============================================================
@@ -150,6 +173,8 @@ class QualityScore(BaseModel):
     score: int = Field(ge=1, le=10)
     reasoning: str = Field(description="One-sentence justification")
 
+evaluator = llm.with_structured_output(QualityScore)
+
 # TODO: evaluator = llm.with_structured_output(QualityScore)
 
 
@@ -165,47 +190,144 @@ class QualityScore(BaseModel):
 
 def collect_node(state: AgentState):
     """Search the web. On retries, CHANGE the query!"""
-    # TODO:
-    # 1. iteration = state["iteration_count"] + 1
-    # 2. Build a query that DIFFERS per iteration (why? see Step 5)
-    # 3. results = search_tool.invoke({"query": query})["results"]
-    # 4. return {"search_query": ..., "collected_data": ...,
-    #            "iteration_count": ..., "execution_logs": [...]}
-    pass
+
+    iteration = state["iteration_count"] + 1
+
+    query = f"{state['topic']} research trends iteration {iteration}"
+
+    results = search_tool.invoke({"query": query})["results"]
+
+    return {
+        "search_query": query,
+        "collected_data": results,
+        "iteration_count": iteration,
+        "execution_logs": [
+            f"Collect iteration {iteration}: found {len(results)} sources"
+        ],
+    }
 
 
 def store_memory_node(state: AgentState):
     """Save source contents into the vector store."""
-    # TODO: vector_store.add_texts([...contents...])
-    pass
+
+    contents = [
+        item["content"]
+        for item in state["collected_data"]
+        if item.get("content")
+    ]
+
+    vector_store.add_texts(contents)
+
+    return {
+        "execution_logs": [
+            f"Stored {len(contents)} sources in memory"
+        ]
+    }
 
 
 def analyze_node(state: AgentState):
-    """LLM-analyze each source. Bonus: retrieve related past
-    research with vector_store.similarity_search(content, k=2)
-    and include it in the prompt — that's what makes this RAG."""
-    # TODO
-    pass
+    """LLM-analyze each source and retrieve related past research."""
+
+    analyzed = []
+
+    for item in state["collected_data"]:
+        content = item.get("content", "")
+
+        if not content:
+            continue
+
+        related = vector_store.similarity_search(content, k=2)
+
+        related_text = "\n\n".join(
+            doc.page_content for doc in related
+        )
+
+        prompt = f"""
+Analyze the following research source about {state["topic"]}.
+
+Source:
+{content}
+
+Related past research:
+{related_text}
+
+Provide a concise analysis of the source, including its main
+findings, relevance to the topic, and any important insights.
+"""
+
+        response = llm.invoke([HumanMessage(content=prompt)])
+
+        analyzed.append({
+            "title": item.get("title", ""),
+            "url": item.get("url", ""),
+            "analysis": response.content,
+        })
+
+    return {
+        "analyzed_data": analyzed,
+        "execution_logs": [
+            f"Analyzed {len(analyzed)} sources"
+        ],
+    }
 
 
 def evaluate_node(state: AgentState):
     """Score the research with the STRUCTURED evaluator (Step 3)."""
-    # TODO: return {"quality_score": result.score, "execution_logs": [...]}
-    pass
 
+    prompt = f"""
+Evaluate the quality of the following research about {state["topic"]}.
+
+Research:
+{state["analyzed_data"]}
+
+Give a quality score from 1 to 10 and a one-sentence justification.
+"""
+
+    result = evaluator.invoke(prompt)
+
+    return {
+        "quality_score": result.score,
+        "execution_logs": [
+            f"Quality score: {result.score}/10 — {result.reasoning}"
+        ],
+    }
 
 def report_node(state: AgentState):
     """Generate the enterprise report from analyzed_data."""
-    # TODO
-    pass
+
+    prompt = f"""
+Create an enterprise research report about {state["topic"]}.
+
+Use the following analyzed research:
+
+{state["analyzed_data"]}
+
+Write a clear, concise report that includes:
+- Executive summary
+- Key findings
+- Important insights
+- Conclusion
+"""
+
+    response = llm.invoke([HumanMessage(content=prompt)])
+
+    return {
+        "final_report": response.content,
+        "execution_logs": [
+            "Final report generated"
+        ],
+    }
 
 
 def audit_node(state: AgentState):
     """Log completion stats."""
-    # TODO
-    pass
 
-
+    return {
+        "execution_logs": [
+            f"Audit: completed after {state['iteration_count']} iteration(s) "
+            f"with quality score {state['quality_score']}/10"
+        ]
+    }
 # ============================================================
 # STEP 5 — THE CONDITIONAL EDGE (the heart of this lab)
 # ============================================================
@@ -229,8 +351,13 @@ def audit_node(state: AgentState):
 # the docs insist on termination conditions.
 
 def quality_router(state: AgentState) -> str:
-    # TODO: return "report" or "collect"
-    pass
+    if state["quality_score"] >= 7:
+        return "report"
+
+    if state["iteration_count"] < 3:
+        return "collect"
+
+    return "report"
 
 
 # ============================================================
@@ -247,8 +374,32 @@ def quality_router(state: AgentState) -> str:
 #
 # WHERE TO LOOK: Graph API docs → "Edges".
 
-# TODO: your code here
+workflow = StateGraph(AgentState)
 
+workflow.add_node("collect", collect_node)
+workflow.add_node("store_memory", store_memory_node)
+workflow.add_node("analyze", analyze_node)
+workflow.add_node("evaluate", evaluate_node)
+workflow.add_node("report", report_node)
+workflow.add_node("audit", audit_node)
+
+workflow.add_edge(START, "collect")
+
+workflow.add_edge("collect", "store_memory")
+workflow.add_edge("store_memory", "analyze")
+workflow.add_edge("analyze", "evaluate")
+
+workflow.add_conditional_edges(
+    "evaluate",
+    quality_router,
+    {
+        "collect": "collect",
+        "report": "report",
+    },
+)
+
+workflow.add_edge("report", "audit")
+workflow.add_edge("audit", END)
 
 # ============================================================
 # STEP 7 — COMPILE with a checkpointer, VISUALIZE, RUN
@@ -275,6 +426,8 @@ def quality_router(state: AgentState) -> str:
 #    then inspect state and resume. WHERE TO LOOK:
 #       https://docs.langchain.com/oss/python/langgraph/interrupts
 
+app = workflow.compile(checkpointer=InMemorySaver())
+
 if __name__ == "__main__":
     initial_state = {
         "topic": "Enterprise Agentic AI Systems",
@@ -286,8 +439,24 @@ if __name__ == "__main__":
         "final_report": "",
         "execution_logs": [],
     }
-    # TODO: compile, visualize, stream, print final report + logs
 
+    print(app.get_graph().draw_mermaid())
+
+    config = {"configurable": {"thread_id": "run-1"}}
+
+    for chunk in app.stream(
+        initial_state,
+        config,
+        stream_mode="values",
+    ):
+        print(chunk)
+
+    print("\nFINAL REPORT:")
+    print(chunk["final_report"])
+
+    print("\nEXECUTION LOGS:")
+    for log in chunk["execution_logs"]:
+        print("-", log)
 
 # ============================================================
 # SELF-CHECK before you look at the solution
