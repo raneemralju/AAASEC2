@@ -1,74 +1,73 @@
-# Day 3 — Agents as Networked Software
+## Raneem Submission — Report Generation Agent
 
-Days 1–2 taught agent *frameworks*: you built the graph machinery yourself, then composed agents into a supervised team. Today the course changes character. **You will not build a fancier graph.** You will take an agent and turn it into what agents actually are in production: a versioned, containerized, discoverable network service that other agents can find and use.
+For the Day 3 submission, I extended the Day 2 multi-agent architecture into a
+reusable Report Generation Agent.
 
-```
-Day 1:  build the machinery yourself        (LangGraph, your router)
-Day 2:  compose agents yourself             (supervisor pattern)
-Day 3:  use the higher-level harness —      (Deep Agents)
-        because you now understand what it hides —
-        and ship it as real software        (Git, HTTP, Docker, MCP, A2A)
-```
+The original Day 2 workflow consists of multiple agents working together:
 
-## No notebooks today
+    User Task
+        ↓
+    Supervisor
+        ↓
+    Researcher
+        ↓
+    Analyst
+        ↓
+    Writer
+        ↓
+    Critic
+        ↓
+    Final Report
 
-Day 3 is files, processes, ports, containers, and commits. A notebook would hide exactly the things being taught. You will work in `src/*.py` with your editor and terminal, and **Git is the spine of the day** — every section ends with a commit, and your `git log` at the end of the day is a deliverable.
+For Day 3, the workflow was extended so that the user can provide a report
+topic dynamically instead of using a hardcoded task.
 
-## The map
+The final approved report is automatically saved as a Markdown artifact:
 
-Work through the numbered guides in order. Each one tells you what to build, which `src/` file to edit, and ends with a Git checkpoint.
+    day3/
+    ├── src/
+    │   └── report_agent.py
+    └── output/
+        └── report.md
 
-| Guide | You build | New vocabulary |
-|---|---|---|
-| `00-git-and-forks.md` | your day-3 branch, upstream sync | working tree, index, HEAD, remotes, reflog |
-| `01-deep-agents.md` | `src/agent.py` | harness, backends, filesystem tools ≠ shell |
-| `02-agent-skills.md` | `skills/<yours>/SKILL.md` | progressive disclosure, prompt vs skill vs tool |
-| `03-fastapi-openresponses.md` | `src/api.py` | API contract ≠ agent implementation |
-| `04-docker.md` | `Dockerfile`, an image | image, container, layer, port, env |
-| `05-docker-compose.md` | `compose.yaml` | services, compose network, service DNS |
-| `06-fastmcp.md` | `src/mcp_server.py` | MCP: agent ↔ tools |
-| `07-skills-over-mcp.md` | skills as MCP resources | transporting knowledge ≠ executing it |
-| `08-stateful-vs-stateless.md` | a v4 protocol experiment | state handles, sticky sessions, why v4 |
-| `09-a2a.md` | agent card + `src/a2a_client.py` | A2A: agent ↔ agent, discovery |
-| `10-challenge.md` | delegation across the class network | the point of all of the above |
+### How it works
 
-The end state, per student:
+1. The user enters a report topic or question.
+2. The Supervisor determines which agent should act next.
+3. The Researcher gathers relevant information.
+4. The Analyst processes the research and extracts useful insights.
+5. The Writer generates the report.
+6. The Critic reviews the generated report.
+7. If the report requires revision, the workflow can return to the appropriate
+   agent.
+8. Once the Critic approves the report, the final draft is saved to
+   `output/report.md`.
 
-```
-                 Internet / class network
-                          │
-                 ┌────────▼─────────┐
-                 │  your instance    │
-                 │  (podman compose) │
-                 │  ┌─────────────┐  │
-     HTTP ───────┼──► FastAPI     │  │   /healthz
-                 │  │ OpenResponses│ │   /v1/responses
-                 │  └──────┬──────┘  │   /.well-known/agent-card.json
-                 │         │         │
-                 │    Deep Agent     │   tools + skills, NO shell (Day 4)
-                 │         │         │
-                 │  ┌──────▼──────┐  │
-                 │  │ FastMCP     │  │   tools + skill:// resources
-                 │  └─────────────┘  │
-                 └────────┬──────────┘
-                          │ A2A discovery + delegation
-                          ▼
-                  another student's agent
-```
+### Example
 
-## Setup (5 min)
+Input:
 
-```bash
-git switch -c day3-api          # everything today happens on this branch (see 00-*.md)
-cd day3
-uv sync
-cp .env.example .env            # add your OpenRouter key; set STUDENT_NAME
-```
+    Assess the challenges and recommendations for implementing federated
+    data governance in a healthcare organization.
 
-No key? `USE_FAKE=1` runs a deterministic fake agent — the *entire* HTTP/Docker/compose/A2A pipeline still works, which is most of today. Same OpenRouter setup as Day 1 (`day1/README.md`).
+Output:
 
-The `solutions/` folder contains reference implementations of every `src/` file. Same rule as always: TODOs first, solutions after you're stuck for real.
+    output/report.md
 
-## What is deliberately NOT here
+The generated artifact contains the report topic and the final approved report.
 
-Code execution and sandboxes. Deep Agents *can* execute code when connected to an execution backend. **We are not doing that today.** Tomorrow: agents writing code, agents executing code, isolation, permissions, resource limits, and "what could possibly go wrong?"
+### Why this demonstrates the Day 3 concept
+
+This submission demonstrates how an agent workflow can be turned into a
+reusable software component with a clear input/output boundary.
+
+The important distinction is:
+
+    Day 2:
+    Multi-agent workflow → final response
+
+    Day 3:
+    Multi-agent workflow → generated artifact
+
+The report-generation agent is designed as a reusable agent component that can be exposed through the networked interfaces 
+developed throughout Day 3.

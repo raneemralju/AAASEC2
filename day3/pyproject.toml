@@ -12,6 +12,7 @@ dependencies = [
     "httpx>=0.27",
     "python-dotenv>=1.0",
     "pydantic>=2.7",
+    "langchain-tavily>=0.2.18",
 ]
 
 # NOTE: no Jupyter today. Day 3 is files, processes, ports, and containers —
