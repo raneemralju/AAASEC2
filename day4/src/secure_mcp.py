@@ -31,15 +31,46 @@ def get_server_time() -> str:
     from datetime import datetime
     return datetime.now().astimezone().isoformat()
 
-
 @mcp.tool(auth=require_scopes("read:internal"))
 def get_internal_report() -> dict:
-    """Return internal data for authorized clients."""
+    """Return protected internal data."""
     return {
         "status": "ok",
         "message": "This is protected internal data.",
     }
 
+
+@mcp.tool(auth=require_scopes("read:internal"))
+def get_student_performance() -> dict:
+    """Return protected student performance data."""
+    return {
+        "students": [
+            {
+                "name": "Student A",
+                "math": 85,
+                "programming": 90,
+                "data_science": 88,
+            },
+            {
+                "name": "Student B",
+                "math": 72,
+                "programming": 80,
+                "data_science": 75,
+            },
+            {
+                "name": "Student C",
+                "math": 95,
+                "programming": 92,
+                "data_science": 94,
+            },
+            {
+                "name": "Student D",
+                "math": 68,
+                "programming": 70,
+                "data_science": 73,
+            },
+        ]
+    }
 
 if __name__ == "__main__":
     mcp.run(
