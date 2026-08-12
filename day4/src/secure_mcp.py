@@ -1,22 +1,49 @@
-"""
-DAY 4 — Authenticated MCP server.
+import os
 
-READ FIRST:  ../02-mcp-auth.md
+from dotenv import load_dotenv
+from fastmcp import FastMCP
 
-Do not continue until: no token -> 401, student token -> public tool
-works, admin token -> protected tool works.
+from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
+from fastmcp.server.auth import require_scopes
 
-TODO:
-  1. StaticTokenVerifier with two tokens (from .env):
-       student -> scopes ["read:public"]
-       admin   -> scopes ["read:public", "read:internal"]
-  2. mcp = FastMCP("...", auth=verifier)
-  3. get_server_time()  — plain @mcp.tool (any valid token)
-  4. get_internal_report() — @mcp.tool(auth=require_scopes("read:internal"))
-  5. __main__: mcp.run(transport="http", host="0.0.0.0", port=8002)
+load_dotenv()
 
-LATER (04-challenge.md): you'll add ONE more protected tool here that
-serves data you invent — same decorator, same scope, different data.
-"""
 
-# TODO
+verifier = StaticTokenVerifier(
+    tokens={
+        os.environ["MCP_STUDENT_TOKEN"]: {
+            "client_id": "student",
+            "scopes": ["read:public"],
+        },
+        os.environ["MCP_ADMIN_TOKEN"]: {
+            "client_id": "admin",
+            "scopes": ["read:public", "read:internal"],
+        },
+    }
+)
+
+mcp = FastMCP("Secure Tools", auth=verifier)
+
+
+@mcp.tool
+def get_server_time() -> str:
+    """Return the current server time."""
+    from datetime import datetime
+    return datetime.now().astimezone().isoformat()
+
+
+@mcp.tool(auth=require_scopes("read:internal"))
+def get_internal_report() -> dict:
+    """Return internal data for authorized clients."""
+    return {
+        "status": "ok",
+        "message": "This is protected internal data.",
+    }
+
+
+if __name__ == "__main__":
+    mcp.run(
+        transport="http",
+        host="0.0.0.0",
+        port=8002,
+    )
