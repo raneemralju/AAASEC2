@@ -10,6 +10,18 @@ load_dotenv()
 
 WORK_DIR = Path(__file__).resolve().parent.parent / "work"
 
+llm = ChatOpenAI(
+    model="deepseek/deepseek-chat-v3-0324",
+    api_key=os.environ["OPENAI_API_KEY"],
+    base_url="https://openrouter.ai/api/v1",
+    max_tokens=2000,
+)
+
+SYSTEM_PROMPT = (
+    "You are a coding agent. "
+    "Use the filesystem and execute tools to complete the task."
+)
+
 
 def make_backend():
     backend = LocalShellBackend(
@@ -22,22 +34,14 @@ def make_backend():
 
 
 async def main():
-    llm = ChatOpenAI(
-        model="deepseek/deepseek-chat-v3-0324",
-        api_key=os.environ["OPENAI_API_KEY"],
-        base_url="https://openrouter.ai/api/v1",
-        max_tokens=2000,
-    )
+
 
     backend, cleanup = make_backend()
 
     try:
         agent = create_deep_agent(
             model=llm,
-            system_prompt=(
-                "You are a coding agent. "
-                "Use the filesystem and execute tools to complete the task."
-            ),
+            system_prompt=SYSTEM_PROMPT,
             backend=backend,
         )
 
