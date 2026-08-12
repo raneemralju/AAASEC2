@@ -1,8 +1,16 @@
+from pathlib import Path
+
 from fastmcp import FastMCP
+from fastmcp.server.providers.skills import SkillsDirectoryProvider
 
 
 mcp = FastMCP("Raneem Tools")
 
+mcp.add_provider(
+    SkillsDirectoryProvider(
+        roots=Path(__file__).parent.parent / "skills"
+    )
+)
 
 @mcp.tool
 def calculate(expression: str) -> float:
